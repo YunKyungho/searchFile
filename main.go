@@ -25,7 +25,7 @@ func scanDirectory(db *pkg.Database, root string) error {
 		}
 
 		if info.IsDir() {
-			db.InsertDirectoryInfo(info.Name(), info.ModTime().Format(timeFormat))
+			db.InsertDirectoryInfo(path, info.ModTime().Format(timeFormat))
 		} else {
 			directory := path[:len(path)-len(info.Name())]
 			diNo := db.SelectDiNo(directory)
