@@ -33,7 +33,7 @@ func (d Database) createTable() {
 		CREATE TABLE IF NOT EXISTS directory_info (
 			di_no INTEGER PRIMARY KEY AUTOINCREMENT,
 			di_path TEXT NOT NULL,
-			di_modified_date DATE NOT NULL
+			di_modified_date DATE NOT NULL,
 			UNIQUE (di_path)
 		);
 	`
