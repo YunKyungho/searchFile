@@ -14,7 +14,7 @@ import (
 func checkMemUsage() bool {
 	m := runtime.MemStats{}
 	runtime.ReadMemStats(&m)
-	if m.Alloc/1024 > 204800 {
+	if m.Alloc/1024 > 51200 {
 		return true
 	}
 	return false
@@ -23,9 +23,7 @@ func checkMemUsage() bool {
 const timeFormat string = "2024-10-19 00:00:00"
 
 // scanDirectory is Browse all files and directories from the root directory using WalkDir
-func scanDirectory(db *pkg.Database, root string) error {
-	tmpMap := map[string]models.Directory{}
-
+func scanDirectory(db *pkg.Database, root string, tmpMap map[string]models.Directory) error {
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			// fmt.Printf("Skipping: %s (Error: %v)\n", path, err)
@@ -62,10 +60,14 @@ func main() {
 	defer db.CloseDatabase()
 	// 로컬에 물리적으로 마운트된 파일시스템만 구하는 선행 로직 필요.
 	root := "/"
-	if err := scanDirectory(db, root); err != nil {
+
+	tmpMap := map[string]models.Directory{}
+	if err := scanDirectory(db, root, tmpMap); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
+	db.InsertAllData(tmpMap)
+
 	// db의 oldFiles, oldDirs의 남은 번호는 전부 delete
 	db.CreateIndex()
 
