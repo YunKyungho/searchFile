@@ -13,8 +13,8 @@ import (
 
 type Database struct {
 	handler  *sql.DB
-	oldFiles map[int]struct{}
-	oldDirs  map[int]struct{}
+	oldFiles map[int]int
+	oldDirs  map[int]int
 }
 
 // NewDatabase is Constructor that open DB
@@ -73,13 +73,14 @@ func (d Database) setOldDirs() {
 	}
 	defer rows.Close()
 
+	d.oldDirs = make(map[int]int)
 	var diNo int
 	for rows.Next() {
 		err := rows.Scan(&diNo)
 		if err != nil {
 			log.Fatalf("Failed to scan di_no in getAllDirNum: %v\n", err)
 		}
-		d.oldDirs[diNo] = struct{}{}
+		d.oldDirs[diNo] = diNo
 	}
 }
 
@@ -92,13 +93,14 @@ func (d Database) setOldFiles() {
 	}
 	defer rows.Close()
 
+	d.oldFiles = make(map[int]int)
 	var fiNo int
 	for rows.Next() {
 		err := rows.Scan(&fiNo)
 		if err != nil {
 			log.Fatalf("Failed to scan fi_no in getAllFileNum: %v\n", err)
 		}
-		d.oldFiles[fiNo] = struct{}{}
+		d.oldFiles[fiNo] = fiNo
 	}
 }
 
@@ -117,12 +119,12 @@ func (d Database) CreateIndex() {
 
 // InsertAllData inserts all data from the data and removes a valid list of data from oldDirs and oldFiles
 func (d Database) InsertAllData(data map[string]models.Directory) {
-	builder := strings.Builder{}
-	builder.WriteString(`INSERT INTO directory_info (di_path, di_modified_date) VALUES `)
 	var values []string
 	for path, dir := range data {
 		values = append(values, fmt.Sprintf("('%s', '%s')", path, dir.ModTime))
 	}
+	builder := strings.Builder{}
+	builder.WriteString(`INSERT INTO directory_info (di_path, di_modified_date) VALUES `)
 	builder.WriteString(strings.Join(values, ", "))
 	builder.WriteString(` ON CONFLICT(di_path) DO UPDATE SET di_modified_date = excluded.di_modified_date RETURNING di_no, di_path;`)
 
@@ -143,32 +145,36 @@ func (d Database) InsertAllData(data map[string]models.Directory) {
 		val, exists := data[diPath]
 		if exists {
 			val.DiNo = diNo
+			data[diPath] = val
 		}
 	}
 
-	builder.Reset()
-	builder.WriteString(`INSERT INTO file_info (fi_name, fi_modifed_date, fi_parent) VALUES `)
 	values = values[:0]
 	for _, dir := range data {
 		for _, file := range dir.Child {
-			values = append(values, fmt.Sprintf("('%s', '%s', '%d')", file.Name, file.ModTime, dir.DiNo))
+			values = append(values, fmt.Sprintf("('%s', '%s', %d)", file.Name, file.ModTime, dir.DiNo))
 		}
 	}
-	builder.WriteString(strings.Join(values, ", "))
-	builder.WriteString(` ON CONFLICT(fi_name, fi_parent) DO UPDATE SET fi_modifed_date = excluded.fi_modifed_date RETURNING fi_no;`)
+	if len(values) > 0 {
+		builder.Reset()
+		builder.WriteString(`INSERT INTO file_info (fi_name, fi_modified_date, fi_parent) VALUES `)
+		builder.WriteString(strings.Join(values, ", "))
+		builder.WriteString(` ON CONFLICT(fi_name, fi_parent) DO UPDATE SET fi_modified_date = excluded.fi_modified_date RETURNING fi_no;`)
 
-	rows2, err2 := d.handler.Query(builder.String())
-	if err2 != nil {
-		log.Fatalf("Failed to insert file_info in InsertAllData: %v\n", err)
-	}
-	defer rows2.Close()
-	for rows2.Next() {
-		var fiNo int
-		err := rows2.Scan(&fiNo)
-		if err != nil {
-			log.Fatalf("Failed to scan file_info in InsertAllData: %v\n", err)
+		rows2, err2 := d.handler.Query(builder.String())
+		if err2 != nil {
+			fmt.Println(builder.String())
+			log.Fatalf("Failed to insert file_info in InsertAllData: %v\n", err2)
 		}
-		delete(d.oldFiles, fiNo)
+		defer rows2.Close()
+		for rows2.Next() {
+			var fiNo int
+			err := rows2.Scan(&fiNo)
+			if err != nil {
+				log.Fatalf("Failed to scan file_info in InsertAllData: %v\n", err)
+			}
+			delete(d.oldFiles, fiNo)
+		}
 	}
 
 }
